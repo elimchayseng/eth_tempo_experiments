@@ -36,10 +36,9 @@ export async function setupAction() {
     emitLog({
       action: ACTION,
       type: "info",
-      label: `${acct.label}: ${acct.address}`,
+      label: `${acct.label}: ${shortAddress(acct.address)}`,
       data: {
-        label: acct.label,
-        address: acct.address,
+        full_address: acct.address,
         note: "private key generated locally",
       },
       indent: 1,
@@ -70,11 +69,9 @@ export async function setupAction() {
     emitLog({
       action: ACTION,
       type: "rpc_call",
-      label: "RPC: tempo_fundAddress",
+      label: `RPC: tempo_fundAddress(${shortAddress(acct.address)})`,
       data: {
-        method: "tempo_fundAddress",
         endpoint: CHAIN_CONFIG.rpcUrl,
-        address: acct.address,
       },
       indent: 1,
     });
