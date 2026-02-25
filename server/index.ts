@@ -10,6 +10,8 @@ import {
 } from "./instrumented-client.js";
 import { publicClient, CHAIN_CONFIG } from "./tempo-client.js";
 import { accountStore } from "./accounts.js";
+import { setupAction } from "./actions/setup.js";
+import { balanceAction } from "./actions/balance.js";
 
 const app = new Hono();
 
@@ -71,15 +73,7 @@ app.get("/api/accounts", (c) => {
 
 app.post("/api/setup", async (c) => {
   try {
-    await runAction("setup", async () => {
-      // Placeholder — will be implemented in Phase 2
-      emitLog({
-        action: "setup",
-        type: "info",
-        label: "Setup action not yet implemented (Phase 2)",
-        data: {},
-      });
-    });
+    await runAction("setup", setupAction);
     return c.json({ ok: true });
   } catch (err) {
     return c.json({ error: String(err) }, 500);
@@ -88,14 +82,7 @@ app.post("/api/setup", async (c) => {
 
 app.post("/api/balance", async (c) => {
   try {
-    await runAction("balance", async () => {
-      emitLog({
-        action: "balance",
-        type: "info",
-        label: "Balance action not yet implemented (Phase 4)",
-        data: {},
-      });
-    });
+    await runAction("balance", balanceAction);
     return c.json({ ok: true });
   } catch (err) {
     return c.json({ error: String(err) }, 500);

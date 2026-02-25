@@ -34,7 +34,7 @@ export type LogEntry = {
     | "annotation";
   label: string;
   data: Record<string, unknown>;
-  annotations?: string[];
+  annotations?: readonly string[];
   indent?: number;
 };
 
