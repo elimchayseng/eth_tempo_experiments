@@ -1,23 +1,77 @@
-import { createPublicClient, createWalletClient, http } from "viem";
+import {
+  createPublicClient,
+  createWalletClient,
+  http,
+  type PublicClient,
+  type WalletClient,
+  type Chain,
+  type Transport,
+  type Account,
+} from "viem";
 import { tempoModerato } from "viem/chains";
+import { tempoActions, Abis, Addresses } from "viem/tempo";
 
 const transport = http("https://rpc.moderato.tempo.xyz");
 
+// Public client extended with Tempo-specific actions (faucet, token, dex, etc.)
+// Note: `as any` on tempoActions due to viem extension type conflicts at compile time.
+// Runtime behavior is correct — verified in Phase 0.
 export const publicClient = createPublicClient({
   chain: tempoModerato,
   transport,
-});
+}).extend(tempoActions as any) as any;
 
-export function createTempoWalletClient(account: any) {
+export function createTempoWalletClient(account: Account) {
   return createWalletClient({
     chain: tempoModerato,
     transport,
     account,
-  });
+  }).extend(tempoActions as any) as any;
 }
+
+// Re-export Tempo ABIs and addresses for use in actions
+export const tip20Abi = Abis.tip20;
+export const tempoAddresses = Addresses;
+
+// Key contract addresses
+export const ALPHA_USD = "0x20c0000000000000000000000000000000000001" as const;
+export const PATH_USD = Addresses.pathUsd;
+export const BETA_USD = "0x20c0000000000000000000000000000000000002" as const;
+export const TIP20_FACTORY = Addresses.tip20Factory;
+export const STABLECOIN_DEX = Addresses.stablecoinDex;
 
 export const CHAIN_CONFIG = {
   chainId: 42431,
   rpcUrl: "https://rpc.moderato.tempo.xyz",
   chainName: "Tempo Moderato Testnet",
+  explorerUrl: "https://explore.moderato.tempo.xyz",
 } as const;
+
+// TIP-20 uses 6 decimals (like USDC)
+export const TIP20_DECIMALS = 6;
+
+/** Convert a human-readable USD amount (e.g. "5.00") to raw TIP-20 units */
+export function parseUsdAmount(amount: string): bigint {
+  const parts = amount.split(".");
+  const whole = BigInt(parts[0]) * BigInt(10 ** TIP20_DECIMALS);
+  if (parts[1]) {
+    const decimals = parts[1].padEnd(TIP20_DECIMALS, "0").slice(0, TIP20_DECIMALS);
+    return whole + BigInt(decimals);
+  }
+  return whole;
+}
+
+/** Convert raw TIP-20 units to a human-readable USD string */
+export function formatUsdAmount(raw: bigint): string {
+  const whole = raw / BigInt(10 ** TIP20_DECIMALS);
+  const frac = raw % BigInt(10 ** TIP20_DECIMALS);
+  const fracStr = frac.toString().padStart(TIP20_DECIMALS, "0");
+  // Trim trailing zeros but keep at least 2 decimals
+  const trimmed = fracStr.replace(/0+$/, "").padEnd(2, "0");
+  return `${whole}.${trimmed}`;
+}
+
+/** Shorten an address for display: 0x1234...abcd */
+export function shortAddress(address: string): string {
+  return `${address.slice(0, 6)}...${address.slice(-4)}`;
+}

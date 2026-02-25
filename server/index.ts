@@ -2,8 +2,14 @@ import { Hono } from "hono";
 import { cors } from "hono/cors";
 import { serve } from "@hono/node-server";
 import { createNodeWebSocket } from "@hono/node-ws";
-import { addClient, removeClient } from "./instrumented-client.js";
+import {
+  addClient,
+  removeClient,
+  runAction,
+  emitLog,
+} from "./instrumented-client.js";
 import { publicClient, CHAIN_CONFIG } from "./tempo-client.js";
+import { accountStore } from "./accounts.js";
 
 const app = new Hono();
 
@@ -52,13 +58,120 @@ app.get("/api/health", async (c) => {
   }
 });
 
-// Placeholder routes for future actions
-app.post("/api/setup", async (c) => c.json({ todo: "phase 2" }));
-app.post("/api/balance", async (c) => c.json({ todo: "phase 4" }));
-app.post("/api/send", async (c) => c.json({ todo: "phase 4" }));
-app.post("/api/send-sponsored", async (c) => c.json({ todo: "phase 5" }));
-app.post("/api/batch", async (c) => c.json({ todo: "phase 6" }));
-app.post("/api/history", async (c) => c.json({ todo: "phase 7" }));
+// Return current accounts state (for initial frontend load)
+app.get("/api/accounts", (c) => {
+  return c.json({ accounts: accountStore.toPublic() });
+});
+
+// ---------------------------------------------------------------------------
+// Action routes — each wraps its logic in runAction() which handles
+// the action_start / action_complete / action_error lifecycle and
+// broadcasts account updates after completion.
+// ---------------------------------------------------------------------------
+
+app.post("/api/setup", async (c) => {
+  try {
+    await runAction("setup", async () => {
+      // Placeholder — will be implemented in Phase 2
+      emitLog({
+        action: "setup",
+        type: "info",
+        label: "Setup action not yet implemented (Phase 2)",
+        data: {},
+      });
+    });
+    return c.json({ ok: true });
+  } catch (err) {
+    return c.json({ error: String(err) }, 500);
+  }
+});
+
+app.post("/api/balance", async (c) => {
+  try {
+    await runAction("balance", async () => {
+      emitLog({
+        action: "balance",
+        type: "info",
+        label: "Balance action not yet implemented (Phase 4)",
+        data: {},
+      });
+    });
+    return c.json({ ok: true });
+  } catch (err) {
+    return c.json({ error: String(err) }, 500);
+  }
+});
+
+app.post("/api/send", async (c) => {
+  try {
+    const body = await c.req.json();
+    await runAction("send", async () => {
+      emitLog({
+        action: "send",
+        type: "info",
+        label: "Send action not yet implemented (Phase 4)",
+        data: body,
+      });
+    });
+    return c.json({ ok: true });
+  } catch (err) {
+    return c.json({ error: String(err) }, 500);
+  }
+});
+
+app.post("/api/send-sponsored", async (c) => {
+  try {
+    const body = await c.req.json();
+    await runAction("send-sponsored", async () => {
+      emitLog({
+        action: "send-sponsored",
+        type: "info",
+        label: "Sponsored send not yet implemented (Phase 5)",
+        data: body,
+      });
+    });
+    return c.json({ ok: true });
+  } catch (err) {
+    return c.json({ error: String(err) }, 500);
+  }
+});
+
+app.post("/api/batch", async (c) => {
+  try {
+    await runAction("batch", async () => {
+      emitLog({
+        action: "batch",
+        type: "info",
+        label: "Batch action not yet implemented (Phase 6)",
+        data: {},
+      });
+    });
+    return c.json({ ok: true });
+  } catch (err) {
+    return c.json({ error: String(err) }, 500);
+  }
+});
+
+app.post("/api/history", async (c) => {
+  try {
+    const body = await c.req.json();
+    await runAction("history", async () => {
+      emitLog({
+        action: "history",
+        type: "info",
+        label: "History action not yet implemented (Phase 7)",
+        data: body,
+      });
+    });
+    return c.json({ ok: true });
+  } catch (err) {
+    return c.json({ error: String(err) }, 500);
+  }
+});
+
+// ---------------------------------------------------------------------------
+// Start server
+// ---------------------------------------------------------------------------
 
 const port = 4000;
 const server = serve({ fetch: app.fetch, port });
@@ -66,4 +179,6 @@ injectWebSocket(server);
 
 console.log(`[tempo-explorer] Server running on http://localhost:${port}`);
 console.log(`[tempo-explorer] WebSocket on ws://localhost:${port}/ws`);
-console.log(`[tempo-explorer] Targeting ${CHAIN_CONFIG.chainName} (chain ${CHAIN_CONFIG.chainId})`);
+console.log(
+  `[tempo-explorer] Targeting ${CHAIN_CONFIG.chainName} (chain ${CHAIN_CONFIG.chainId})`
+);
