@@ -1,4 +1,4 @@
-import { toHex } from "viem";
+import { toHex, formatGwei } from "viem";
 import { Actions, Abis } from "viem/tempo";
 import { accountStore } from "../accounts.js";
 import {
@@ -304,6 +304,33 @@ export async function sendSponsoredAction(params: {
     },
   });
 
+  // Fee math breakdown from receipt
+  const gasUsed = receipt.gasUsed as bigint;
+  const effectiveGasPrice = receipt.effectiveGasPrice as bigint;
+  const computedFeeWei = gasUsed * effectiveGasPrice;
+  const WEI_TO_TIP20 = BigInt(10 ** 12);
+  const computedFeeTip20 = computedFeeWei / WEI_TO_TIP20;
+
+  emitLog({
+    action: ACTION,
+    type: "info",
+    label: "Fee calculation breakdown",
+    data: {
+      "1_from_receipt": {
+        gasUsed: gasUsed.toString(),
+        effectiveGasPrice: `${formatGwei(effectiveGasPrice)} Gwei (${effectiveGasPrice.toString()} wei)`,
+        feePayer: receipt.feePayer ? `${shortAddress(receipt.feePayer)} (Sponsor)` : "unknown",
+        feeToken: receipt.feeToken ?? PATH_USD,
+        note: "Gas price is set dynamically by the chain's fee market — not a value we control",
+      },
+      "2_formula": `fee = gasUsed × effectiveGasPrice`,
+      "3_calculation": `${gasUsed} gas × ${formatGwei(effectiveGasPrice)} Gwei = ${formatGwei(computedFeeWei)} Gwei`,
+      "4_to_dollars": `${formatGwei(computedFeeWei)} Gwei ÷ 10³ ≈ $${formatUsdAmount(computedFeeTip20)} (TIP-20 uses 6 decimals, Gwei uses 9)`,
+      "5_actual_fee": `$${formatUsdAmount(sponsorPathDiff)} (Sponsor's pathUSD balance dropped by this amount)`,
+    },
+    indent: 1,
+  });
+
   emitLog({
     action: ACTION,
     type: "annotation",
@@ -311,6 +338,7 @@ export async function sendSponsoredAction(params: {
     data: {},
     annotations: [
       `PROOF: ${senderAcct.label} lost exactly $${amount} (the transfer amount). The fee of $${formatUsdAmount(sponsorPathDiff)} was paid by Sponsor in pathUSD.`,
+      `FEE MATH: ${gasUsed} gas × ${formatGwei(effectiveGasPrice)} Gwei/gas = ${formatGwei(computedFeeWei)} Gwei ≈ $${formatUsdAmount(computedFeeTip20)} in pathUSD`,
       "The fee was paid in pathUSD — the network's base fee token. The Fee AMM allows fees to be paid in any stablecoin, and the sponsor can choose which one.",
       "On Ethereum, this requires ERC-4337 (Account Abstraction) with a bundler and paymaster contract. On Tempo, it's just a field on the transaction.",
     ],
