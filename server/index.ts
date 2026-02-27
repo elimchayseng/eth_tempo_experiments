@@ -12,6 +12,8 @@ import { publicClient, CHAIN_CONFIG } from "./tempo-client.js";
 import { accountStore } from "./accounts.js";
 import { setupAction } from "./actions/setup.js";
 import { balanceAction } from "./actions/balance.js";
+import { sendAction } from "./actions/send.js";
+import { sendSponsoredAction } from "./actions/send-sponsored.js";
 
 const app = new Hono();
 
@@ -92,14 +94,7 @@ app.post("/api/balance", async (c) => {
 app.post("/api/send", async (c) => {
   try {
     const body = await c.req.json();
-    await runAction("send", async () => {
-      emitLog({
-        action: "send",
-        type: "info",
-        label: "Send action not yet implemented (Phase 4)",
-        data: body,
-      });
-    });
+    await runAction("send", () => sendAction(body));
     return c.json({ ok: true });
   } catch (err) {
     return c.json({ error: String(err) }, 500);
@@ -109,14 +104,7 @@ app.post("/api/send", async (c) => {
 app.post("/api/send-sponsored", async (c) => {
   try {
     const body = await c.req.json();
-    await runAction("send-sponsored", async () => {
-      emitLog({
-        action: "send-sponsored",
-        type: "info",
-        label: "Sponsored send not yet implemented (Phase 5)",
-        data: body,
-      });
-    });
+    await runAction("send-sponsored", () => sendSponsoredAction(body));
     return c.json({ ok: true });
   } catch (err) {
     return c.json({ error: String(err) }, 500);
