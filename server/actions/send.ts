@@ -1,11 +1,10 @@
-import { toHex } from "viem";
+import { toHex, formatGwei } from "viem";
 import { Actions, Abis } from "viem/tempo";
 import { accountStore } from "../accounts.js";
 import {
   publicClient,
   createTempoWalletClient,
   ALPHA_USD,
-  PATH_USD,
   CHAIN_CONFIG,
   TIP20_DECIMALS,
   parseUsdAmount,
@@ -74,43 +73,36 @@ export async function sendAction(params: {
   emitLog({
     action: ACTION,
     type: "rpc_call",
-    label: "RPC: eth_call × 3 — reading AlphaUSD + sender pathUSD balances",
+    label: "RPC: eth_call × 2 — reading AlphaUSD balances before transfer",
     data: {
-      tokens: { AlphaUSD: ALPHA_USD, pathUSD: PATH_USD },
-      note: "Fee is paid in pathUSD (the network's base fee token)",
+      contract: ALPHA_USD,
+      function: "balanceOf(address)",
+      accounts: [senderAcct.label, recipientAcct.label],
     },
   });
 
-  const [senderBalanceBefore, recipientBalanceBefore, senderPathBefore] =
-    await Promise.all([
-      publicClient.readContract({
-        address: ALPHA_USD,
-        abi: Abis.tip20,
-        functionName: "balanceOf",
-        args: [senderAcct.address],
-      }) as Promise<bigint>,
-      publicClient.readContract({
-        address: ALPHA_USD,
-        abi: Abis.tip20,
-        functionName: "balanceOf",
-        args: [recipientAcct.address],
-      }) as Promise<bigint>,
-      publicClient.readContract({
-        address: PATH_USD,
-        abi: Abis.tip20,
-        functionName: "balanceOf",
-        args: [senderAcct.address],
-      }) as Promise<bigint>,
-    ]);
+  const [senderBalanceBefore, recipientBalanceBefore] = await Promise.all([
+    publicClient.readContract({
+      address: ALPHA_USD,
+      abi: Abis.tip20,
+      functionName: "balanceOf",
+      args: [senderAcct.address],
+    }) as Promise<bigint>,
+    publicClient.readContract({
+      address: ALPHA_USD,
+      abi: Abis.tip20,
+      functionName: "balanceOf",
+      args: [recipientAcct.address],
+    }) as Promise<bigint>,
+  ]);
 
   emitLog({
     action: ACTION,
     type: "rpc_result",
     label: `Balances before`,
     data: {
-      [`${senderAcct.label} (AlphaUSD)`]: `$${formatUsdAmount(senderBalanceBefore)}`,
-      [`${recipientAcct.label} (AlphaUSD)`]: `$${formatUsdAmount(recipientBalanceBefore)}`,
-      [`${senderAcct.label} (pathUSD)`]: `$${formatUsdAmount(senderPathBefore)}`,
+      [senderAcct.label]: `$${formatUsdAmount(senderBalanceBefore)}`,
+      [recipientAcct.label]: `$${formatUsdAmount(recipientBalanceBefore)}`,
     },
     indent: 1,
   });
@@ -206,13 +198,13 @@ export async function sendAction(params: {
   emitLog({
     action: ACTION,
     type: "rpc_call",
-    label: "RPC: eth_call × 3 — reading balances after transfer",
+    label: "RPC: eth_call × 2 — reading AlphaUSD balances after transfer",
     data: {
-      note: "Checking AlphaUSD balances + sender's pathUSD (fee token)",
+      note: "Fee is also paid in AlphaUSD for self-pay sends",
     },
   });
 
-  const [senderBalanceAfter, recipientBalanceAfter, senderPathAfter] =
+  const [senderBalanceAfter, recipientBalanceAfter] =
     await Promise.all([
       publicClient.readContract({
         address: ALPHA_USD,
@@ -226,12 +218,6 @@ export async function sendAction(params: {
         functionName: "balanceOf",
         args: [recipientAcct.address],
       }) as Promise<bigint>,
-      publicClient.readContract({
-        address: PATH_USD,
-        abi: Abis.tip20,
-        functionName: "balanceOf",
-        args: [senderAcct.address],
-      }) as Promise<bigint>,
     ]);
 
   // Update account store
@@ -240,7 +226,7 @@ export async function sendAction(params: {
 
   const senderAlphaDiff = senderBalanceBefore - senderBalanceAfter;
   const recipientDiff = recipientBalanceAfter - recipientBalanceBefore;
-  const senderPathDiff = senderPathBefore - senderPathAfter;
+  const feePaid = senderAlphaDiff - rawAmount;
 
   emitLog({
     action: ACTION,
@@ -251,20 +237,42 @@ export async function sendAction(params: {
         before: `$${formatUsdAmount(senderBalanceBefore)}`,
         after: `$${formatUsdAmount(senderBalanceAfter)}`,
         change: `−$${formatUsdAmount(senderAlphaDiff)}`,
-        note: "Transfer amount only — no fee in AlphaUSD!",
+        breakdown: `$${amount} transfer + $${formatUsdAmount(feePaid)} fee`,
+        note: "Self-pay: sender pays the fee in AlphaUSD (same token as the transfer)",
       },
       [recipientAcct.label + " (AlphaUSD)"]: {
         before: `$${formatUsdAmount(recipientBalanceBefore)}`,
         after: `$${formatUsdAmount(recipientBalanceAfter)}`,
         change: `+$${formatUsdAmount(recipientDiff)}`,
       },
-      [`${senderAcct.label} (pathUSD — fee)`]: {
-        before: `$${formatUsdAmount(senderPathBefore)}`,
-        after: `$${formatUsdAmount(senderPathAfter)}`,
-        change: `−$${formatUsdAmount(senderPathDiff)}`,
-        note: `Fee of $${formatUsdAmount(senderPathDiff)} paid in pathUSD`,
-      },
     },
+  });
+
+  // Fee math breakdown from receipt
+  const gasUsed = result.receipt.gasUsed as bigint;
+  const effectiveGasPrice = result.receipt.effectiveGasPrice as bigint;
+  const computedFeeWei = gasUsed * effectiveGasPrice;
+  // effectiveGasPrice is in 18-decimal "wei" format (standard EVM convention).
+  // Fee token (AlphaUSD) uses 6 decimals, so divide by 10^12 to convert.
+  // Chain rounds up, so integer division may be off by ≤1 raw unit ($0.000001).
+  const WEI_TO_TIP20 = BigInt(10 ** 12);
+  const computedFeeTip20 = computedFeeWei / WEI_TO_TIP20;
+
+  emitLog({
+    action: ACTION,
+    type: "info",
+    label: "Fee calculation breakdown",
+    data: {
+      "1_from_receipt": {
+        gasUsed: gasUsed.toString(),
+        effectiveGasPrice: `${formatGwei(effectiveGasPrice)} Gwei (${effectiveGasPrice.toString()} wei)`
+      },
+      "2_formula": `fee = gasUsed × effectiveGasPrice`,
+      "3_calculation": `${gasUsed} gas × ${formatGwei(effectiveGasPrice)} Gwei = ${formatGwei(computedFeeWei)} Gwei`,
+      "4_to_dollars": `${formatGwei(computedFeeWei)} Gwei ÷ 10³ ≈ $${formatUsdAmount(computedFeeTip20)} (TIP-20 uses 6 decimals, Gwei uses 9)`,
+      "5_actual_fee": `$${formatUsdAmount(feePaid)} (from balance: $${formatUsdAmount(senderAlphaDiff)} deducted − $${amount} transferred)`,
+    },
+    indent: 1,
   });
 
   emitLog({
