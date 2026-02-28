@@ -4,7 +4,7 @@ import type { ChainConfig } from "../shared/types.js";
 export const config = {
   server: {
     port: process.env.PORT ? parseInt(process.env.PORT) : 4000,
-    host: process.env.HOST || 'localhost',
+    // Railway handles host binding automatically, we just need the port
     environment: process.env.NODE_ENV || 'development',
   },
 
