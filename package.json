@@ -8,13 +8,17 @@
     "dev:server": "tsx watch server/index.ts",
     "dev:web": "vite",
     "build": "vite build",
-    "check": "tsc --noEmit"
+    "build:api": "tsc api/**/*.ts --outDir .vercel/output/functions",
+    "check": "tsc --noEmit",
+    "vercel-build": "npm run build"
   },
   "dependencies": {
     "viem": "latest",
     "hono": "latest",
     "@hono/node-server": "latest",
-    "@hono/node-ws": "latest"
+    "@hono/node-ws": "latest",
+    "@vercel/node": "latest",
+    "@upstash/redis": "latest"
   },
   "devDependencies": {
     "typescript": "^5",

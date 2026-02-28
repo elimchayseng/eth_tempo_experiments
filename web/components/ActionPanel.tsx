@@ -7,9 +7,19 @@ type Props = {
 };
 
 async function callAction(endpoint: string, body?: Record<string, unknown>) {
+  const sessionId = localStorage.getItem('tempo-session-id') ||
+    `session_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
+
+  if (!localStorage.getItem('tempo-session-id')) {
+    localStorage.setItem('tempo-session-id', sessionId);
+  }
+
   const res = await fetch(endpoint, {
     method: "POST",
-    headers: { "Content-Type": "application/json" },
+    headers: {
+      "Content-Type": "application/json",
+      "X-Session-Id": sessionId
+    },
     body: body ? JSON.stringify(body) : undefined,
   });
   if (!res.ok) {
