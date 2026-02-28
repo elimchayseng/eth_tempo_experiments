@@ -1,5 +1,6 @@
 import { Hono } from "hono";
 import { cors } from "hono/cors";
+import { serveStatic } from "hono/node-server";
 import { serve } from "@hono/node-server";
 import { createNodeWebSocket } from "@hono/node-ws";
 import {
@@ -23,6 +24,9 @@ const { injectWebSocket, upgradeWebSocket } = createNodeWebSocket({ app });
 
 // Middleware
 app.use("/*", cors());
+
+// Serve static files from dist directory
+app.use("/*", serveStatic({ root: "./dist" }));
 
 // WebSocket endpoint
 app.get(
