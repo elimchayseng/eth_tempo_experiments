@@ -38,6 +38,10 @@ export default function ActionPanel({ accounts, activeAction }: Props) {
   const [sendMemo, setSendMemo] = useState("dinner last night");
   const [feeMode, setFeeMode] = useState<"self" | "sponsored">("self");
 
+  // Batch payment state
+  const [batchFrom, setBatchFrom] = useState("sponsor");
+  const [showBatchForm, setShowBatchForm] = useState(false);
+
   const isRunning = activeAction !== null;
   const hasAccounts = accounts.length > 0;
   const alphaUsd = "0x20c0000000000000000000000000000000000001";
@@ -184,15 +188,42 @@ export default function ActionPanel({ accounts, activeAction }: Props) {
       {/* Divider */}
       <div className="h-px bg-gray-800" />
 
+      {/* Batch Payment */}
+      <section>
+        <h2 className="text-[11px] font-semibold text-gray-500 uppercase tracking-wider mb-2">
+          Batch Payment
+        </h2>
+        <div className="space-y-2">
+          {!showBatchForm ? (
+            <ActionButton
+              label="Batch Payroll (3 payments)"
+              active={activeAction === "batch"}
+              disabled={isRunning || !hasAccounts}
+              onClick={() => {
+                // Send predefined payroll batch as per spec
+                callAction("/api/batch", {
+                  from: "Sponsor",
+                  payments: [
+                    { to: "Alice", amount: "10", memo: "PAYROLL-001" },
+                    { to: "Bob", amount: "15", memo: "PAYROLL-002" },
+                    { to: "Merchant", amount: "8.50", memo: "PAYROLL-003" }
+                  ]
+                });
+              }}
+            />
+          ) : (
+            // Future: Custom batch form could go here
+            <p className="text-xs text-gray-600">Custom batch form placeholder</p>
+          )}
+        </div>
+      </section>
+
+      {/* Divider */}
+      <div className="h-px bg-gray-800" />
+
       {/* More actions */}
       <section>
         <div className="space-y-2">
-          <ActionButton
-            label="Batch Payroll"
-            active={activeAction === "batch"}
-            disabled={isRunning || !hasAccounts}
-            onClick={() => callAction("/api/batch")}
-          />
           <ActionButton
             label="View History"
             active={activeAction === "history"}
