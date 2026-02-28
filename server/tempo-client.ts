@@ -62,12 +62,17 @@ export function parseUsdAmount(amount: string): bigint {
 }
 
 /** Convert raw TIP-20 units to a human-readable USD string */
-export function formatUsdAmount(raw: bigint): string {
-  const whole = raw / BigInt(10 ** TIP20_DECIMALS);
-  const frac = raw % BigInt(10 ** TIP20_DECIMALS);
+export function formatUsdAmount(raw: bigint | any): string {
+  // If raw is undefined or null, force it to 0n
+  const bigRaw = (raw === undefined || raw === null) ? 0n : BigInt(raw);
+  
+  const divisor = 10n ** BigInt(TIP20_DECIMALS);
+  const whole = bigRaw / divisor;
+  const frac = bigRaw % divisor;
+  
   const fracStr = frac.toString().padStart(TIP20_DECIMALS, "0");
-  // Trim trailing zeros but keep at least 2 decimals
   const trimmed = fracStr.replace(/0+$/, "").padEnd(2, "0");
+  
   return `${whole}.${trimmed}`;
 }
 
