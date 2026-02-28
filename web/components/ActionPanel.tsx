@@ -1,37 +1,17 @@
 import { useState } from "react";
 import type { Account } from "../lib/types";
+import { ApiService, formatApiError } from "../services/api";
+import { formatBalance, shortAddr, capitalize } from "../utils/formatting";
 
 type Props = {
   accounts: Account[];
   activeAction: string | null;
 };
 
-async function callAction(endpoint: string, body?: Record<string, unknown>) {
-  const res = await fetch(endpoint, {
-    method: "POST",
-    headers: { "Content-Type": "application/json" },
-    body: body ? JSON.stringify(body) : undefined,
-  });
-  if (!res.ok) {
-    console.error(`Action failed: ${res.status}`);
-  }
-}
-
-function formatBalance(balance: string): string {
-  const raw = BigInt(balance || "0");
-  const whole = raw / 1_000_000n;
-  const frac = raw % 1_000_000n;
-  const fracStr = frac.toString().padStart(6, "0").slice(0, 2);
-  return `$${whole.toLocaleString()}.${fracStr}`;
-}
-
-function shortAddr(address: string): string {
-  return `${address.slice(0, 6)}...${address.slice(-4)}`;
-}
-
 const ACCOUNT_NAMES = ["alice", "bob", "merchant", "sponsor"] as const;
 
 export default function ActionPanel({ accounts, activeAction }: Props) {
+  // Form state
   const [sendFrom, setSendFrom] = useState("alice");
   const [sendTo, setSendTo] = useState("bob");
   const [sendAmount, setSendAmount] = useState("5.00");
@@ -42,12 +22,41 @@ export default function ActionPanel({ accounts, activeAction }: Props) {
   const [batchFrom, setBatchFrom] = useState("sponsor");
   const [showBatchForm, setShowBatchForm] = useState(false);
 
+  // Error state
+  const [error, setError] = useState<string | null>(null);
+
+  // Helper function to handle API calls with error handling
+  const handleApiCall = async (apiCall: () => Promise<void>, errorContext: string) => {
+    try {
+      setError(null);
+      await apiCall();
+    } catch (err) {
+      const errorMessage = formatApiError(err);
+      setError(`${errorContext}: ${errorMessage}`);
+      console.error(`[${errorContext}]`, err);
+    }
+  };
+
   const isRunning = activeAction !== null;
   const hasAccounts = accounts.length > 0;
   const alphaUsd = "0x20c0000000000000000000000000000000000001";
 
   return (
     <div className="flex flex-col gap-5 p-4 h-full overflow-y-auto">
+      {/* Error Display */}
+      {error && (
+        <div className="bg-red-900/30 border border-red-800 rounded p-3">
+          <p className="text-red-400 text-xs font-medium">Error</p>
+          <p className="text-red-300 text-sm mt-1">{error}</p>
+          <button
+            onClick={() => setError(null)}
+            className="text-red-500 hover:text-red-400 text-xs mt-2"
+          >
+            Dismiss
+          </button>
+        </div>
+      )}
+
       {/* Accounts */}
       <section>
         <h2 className="text-[11px] font-semibold text-gray-500 uppercase tracking-wider mb-2">
@@ -99,13 +108,13 @@ export default function ActionPanel({ accounts, activeAction }: Props) {
             active={activeAction === "setup"}
             disabled={isRunning}
             variant="primary"
-            onClick={() => callAction("/api/setup")}
+            onClick={() => handleApiCall(ApiService.setup, "Setup Accounts")}
           />
           <ActionButton
             label="Check Balances"
             active={activeAction === "balance"}
             disabled={isRunning || !hasAccounts}
-            onClick={() => callAction("/api/balance")}
+            onClick={() => handleApiCall(ApiService.checkBalances, "Check Balances")}
           />
         </div>
       </section>
@@ -175,12 +184,14 @@ export default function ActionPanel({ accounts, activeAction }: Props) {
             }
             disabled={isRunning || !hasAccounts}
             variant="success"
-            onClick={() =>
-              callAction(
-                feeMode === "self" ? "/api/send" : "/api/send-sponsored",
-                { from: sendFrom, to: sendTo, amount: sendAmount, memo: sendMemo }
-              )
-            }
+            onClick={() => {
+              const request = { from: sendFrom, to: sendTo, amount: sendAmount, memo: sendMemo };
+              if (feeMode === "self") {
+                handleApiCall(() => ApiService.send(request), "Send Payment");
+              } else {
+                handleApiCall(() => ApiService.sendSponsored(request), "Send Sponsored Payment");
+              }
+            }}
           />
         </div>
       </section>
@@ -200,15 +211,15 @@ export default function ActionPanel({ accounts, activeAction }: Props) {
               active={activeAction === "batch"}
               disabled={isRunning || !hasAccounts}
               onClick={() => {
-                // Send predefined payroll batch as per spec
-                callAction("/api/batch", {
-                  from: "Sponsor",
+                const batchRequest = {
+                  from: "sponsor",
                   payments: [
-                    { to: "Alice", amount: "10", memo: "PAYROLL-001" },
-                    { to: "Bob", amount: "15", memo: "PAYROLL-002" },
-                    { to: "Merchant", amount: "8.50", memo: "PAYROLL-003" }
+                    { to: "alice", amount: "10", memo: "PAYROLL-001" },
+                    { to: "bob", amount: "15", memo: "PAYROLL-002" },
+                    { to: "merchant", amount: "8.50", memo: "PAYROLL-003" }
                   ]
-                });
+                };
+                handleApiCall(() => ApiService.batch(batchRequest), "Batch Payment");
               }}
             />
           ) : (
@@ -228,7 +239,7 @@ export default function ActionPanel({ accounts, activeAction }: Props) {
             label="View History"
             active={activeAction === "history"}
             disabled={isRunning || !hasAccounts}
-            onClick={() => callAction("/api/history", { account: "alice" })}
+            onClick={() => handleApiCall(() => ApiService.history({ account: "alice" }), "View History")}
           />
         </div>
       </section>
@@ -319,7 +330,7 @@ function SelectField({
       >
         {options.map((n) => (
           <option key={n} value={n}>
-            {n.charAt(0).toUpperCase() + n.slice(1)}
+            {capitalize(n)}
           </option>
         ))}
       </select>

@@ -8,15 +8,26 @@ import {
   removeClient,
   runAction,
   emitLog,
+  getClientCount,
+  getClientLimit,
 } from "./instrumented-client.js";
 import { publicClient, CHAIN_CONFIG } from "./tempo-client.js";
 import { accountStore } from "./accounts.js";
+import { config, validateConfig } from "./config.js";
+import {
+  validateSendRequest,
+  validateBatchRequest,
+  validateHistoryRequest,
+} from "../shared/validation.js";
 import { setupAction } from "./actions/setup.js";
 import { balanceAction } from "./actions/balance.js";
 import { sendAction } from "./actions/send.js";
 import { sendSponsoredAction } from "./actions/send-sponsored.js";
 import { batchAction } from "./actions/batch.js";
 import { historyAction } from "./actions/history.js";
+
+// Validate configuration on startup
+validateConfig();
 
 const app = new Hono();
 
@@ -25,19 +36,45 @@ const { injectWebSocket, upgradeWebSocket } = createNodeWebSocket({ app });
 // Middleware
 app.use("/*", cors());
 
+// Request logging middleware (if enabled)
+if (config.logging.enableRequestLogging) {
+  app.use("*", async (c, next) => {
+    const start = Date.now();
+    console.log(`[${new Date().toISOString()}] ${c.req.method} ${c.req.url}`);
+    await next();
+    const duration = Date.now() - start;
+    console.log(`[${new Date().toISOString()}] ${c.req.method} ${c.req.url} - ${c.res.status} (${duration}ms)`);
+  });
+}
+
 // Serve static files from dist directory
 app.use("/*", serveStatic({ root: "./dist" }));
 
-// WebSocket endpoint
+// WebSocket endpoint with connection limits and error handling
 app.get(
   "/ws",
   upgradeWebSocket(() => ({
     onOpen(_event, ws) {
-      console.log("[ws] client connected");
-      addClient(ws);
+      const success = addClient(ws);
+      if (!success) {
+        // Connection limit reached, close the connection
+        ws.close(1013, "Connection limit reached");
+        return;
+      }
+
+      // Send connection acknowledgment
+      ws.send(JSON.stringify({
+        type: "connection",
+        connected: true,
+        clientCount: getClientCount(),
+        maxClients: getClientLimit(),
+      }));
     },
     onClose(_event, ws) {
-      console.log("[ws] client disconnected");
+      removeClient(ws);
+    },
+    onError(event, ws) {
+      console.error("[ws] WebSocket error:", event);
       removeClient(ws);
     },
   }))
@@ -108,9 +145,19 @@ app.post("/api/balance", async (c) => {
 app.post("/api/send", async (c) => {
   try {
     const body = await c.req.json();
-    await runAction("send", () => sendAction(body));
+    const validation = validateSendRequest(body);
+
+    if (!validation.isValid) {
+      return c.json({
+        error: "Validation failed",
+        details: validation.errors
+      }, 400);
+    }
+
+    await runAction("send", () => sendAction(validation.data!));
     return c.json({ ok: true });
   } catch (err) {
+    console.error("[api/send] Error:", err);
     return c.json({ error: String(err) }, 500);
   }
 });
@@ -118,9 +165,19 @@ app.post("/api/send", async (c) => {
 app.post("/api/send-sponsored", async (c) => {
   try {
     const body = await c.req.json();
-    await runAction("send-sponsored", () => sendSponsoredAction(body));
+    const validation = validateSendRequest(body);
+
+    if (!validation.isValid) {
+      return c.json({
+        error: "Validation failed",
+        details: validation.errors
+      }, 400);
+    }
+
+    await runAction("send-sponsored", () => sendSponsoredAction(validation.data!));
     return c.json({ ok: true });
   } catch (err) {
+    console.error("[api/send-sponsored] Error:", err);
     return c.json({ error: String(err) }, 500);
   }
 });
@@ -128,9 +185,19 @@ app.post("/api/send-sponsored", async (c) => {
 app.post("/api/batch", async (c) => {
   try {
     const body = await c.req.json();
-    await runAction("batch", () => batchAction(body));
+    const validation = validateBatchRequest(body);
+
+    if (!validation.isValid) {
+      return c.json({
+        error: "Validation failed",
+        details: validation.errors
+      }, 400);
+    }
+
+    await runAction("batch", () => batchAction(validation.data!));
     return c.json({ ok: true });
   } catch (err) {
+    console.error("[api/batch] Error:", err);
     return c.json({ error: String(err) }, 500);
   }
 });
@@ -138,9 +205,19 @@ app.post("/api/batch", async (c) => {
 app.post("/api/history", async (c) => {
   try {
     const body = await c.req.json();
-    await runAction("history", () => historyAction(body));
+    const validation = validateHistoryRequest(body);
+
+    if (!validation.isValid) {
+      return c.json({
+        error: "Validation failed",
+        details: validation.errors
+      }, 400);
+    }
+
+    await runAction("history", () => historyAction(validation.data!));
     return c.json({ ok: true });
   } catch (err) {
+    console.error("[api/history] Error:", err);
     return c.json({ error: String(err) }, 500);
   }
 });
@@ -149,12 +226,16 @@ app.post("/api/history", async (c) => {
 // Start server
 // ---------------------------------------------------------------------------
 
-const port = process.env.PORT || 4000;
-const server = serve({ fetch: app.fetch, port });
+const server = serve({
+  fetch: app.fetch,
+  port: config.server.port,
+  hostname: config.server.host
+});
 injectWebSocket(server);
 
-console.log(`[tempo-explorer] Server running on http://localhost:${port}`);
-console.log(`[tempo-explorer] WebSocket on ws://localhost:${port}/ws`);
-console.log(
-  `[tempo-explorer] Targeting ${CHAIN_CONFIG.chainName} (chain ${CHAIN_CONFIG.chainId})`
-);
+console.log(`[tempo-explorer] Server running on http://${config.server.host}:${config.server.port}`);
+console.log(`[tempo-explorer] WebSocket on ws://${config.server.host}:${config.server.port}/ws`);
+console.log(`[tempo-explorer] Environment: ${config.server.environment}`);
+console.log(`[tempo-explorer] Targeting ${CHAIN_CONFIG.chainName} (chain ${CHAIN_CONFIG.chainId})`);
+console.log(`[tempo-explorer] Max WebSocket connections: ${config.limits.maxWebSocketConnections}`);
+console.log(`[tempo-explorer] Request logging: ${config.logging.enableRequestLogging ? 'enabled' : 'disabled'}`);
