@@ -14,29 +14,11 @@ import {
   shortAddress,
 } from "./tempo-client.js";
 import { accountStore } from "./accounts.js";
+import { config } from "./config.js";
+import type { LogEntry } from "../shared/types.js";
 
-// ---------------------------------------------------------------------------
-// Types
-// ---------------------------------------------------------------------------
-
-export type LogEntry = {
-  id: string;
-  timestamp: number;
-  action: string;
-  type:
-    | "info"
-    | "rpc_call"
-    | "rpc_result"
-    | "tx_built"
-    | "tx_submitted"
-    | "tx_confirmed"
-    | "error"
-    | "annotation";
-  label: string;
-  data: Record<string, unknown>;
-  annotations?: readonly string[];
-  indent?: number;
-};
+// Re-export LogEntry from shared types
+export type { LogEntry } from "../shared/types.js";
 
 // ---------------------------------------------------------------------------
 // WebSocket client management
@@ -48,14 +30,36 @@ function makeId(): string {
   return `log_${Date.now()}_${++entryCounter}`;
 }
 
+// Improved WebSocket connection management
 const clients = new Set<WSContext>();
+const clientMetadata = new WeakMap<WSContext, { connectedAt: number }>();
 
-export function addClient(ws: WSContext) {
+export function addClient(ws: WSContext): boolean {
+  if (clients.size >= config.limits.maxWebSocketConnections) {
+    console.warn(`WebSocket connection limit reached (${config.limits.maxWebSocketConnections})`);
+    return false;
+  }
+
   clients.add(ws);
+  clientMetadata.set(ws, { connectedAt: Date.now() });
+  console.log(`[ws] Client connected. Total: ${clients.size}/${config.limits.maxWebSocketConnections}`);
+  return true;
 }
 
-export function removeClient(ws: WSContext) {
-  clients.delete(ws);
+export function removeClient(ws: WSContext): void {
+  const removed = clients.delete(ws);
+  clientMetadata.delete(ws);
+  if (removed) {
+    console.log(`[ws] Client disconnected. Total: ${clients.size}/${config.limits.maxWebSocketConnections}`);
+  }
+}
+
+export function getClientCount(): number {
+  return clients.size;
+}
+
+export function getClientLimit(): number {
+  return config.limits.maxWebSocketConnections;
 }
 
 /** BigInt-safe JSON serializer */
@@ -65,14 +69,28 @@ function safeStringify(obj: unknown): string {
   );
 }
 
-function broadcast(message: Record<string, unknown>) {
+function broadcast(message: Record<string, unknown>): void {
+  if (clients.size === 0) return;
+
   const json = safeStringify(message);
+  const deadConnections: WSContext[] = [];
+
   for (const ws of clients) {
     try {
       ws.send(json);
-    } catch {
-      clients.delete(ws);
+    } catch (error) {
+      console.warn('[ws] Failed to send message to client:', error instanceof Error ? error.message : error);
+      deadConnections.push(ws);
     }
+  }
+
+  // Clean up dead connections
+  for (const ws of deadConnections) {
+    removeClient(ws);
+  }
+
+  if (deadConnections.length > 0) {
+    console.log(`[ws] Cleaned up ${deadConnections.length} dead connections`);
   }
 }
 
@@ -247,12 +265,15 @@ export async function instrumentedWriteContract(
     indent: (indent ?? 0) + 1,
   });
 
+  // NOTE: Using any cast here for viem typing compatibility
+  // Runtime behavior is correct as verified in testing
   const hash = await walletClient.writeContract({
     address,
     abi: abi as any,
     functionName,
     args: args as any,
-  });
+    chain: null, // Let viem infer the chain from the client
+  } as any);
 
   emitLog({
     action,

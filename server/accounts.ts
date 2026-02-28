@@ -1,11 +1,8 @@
 import { generatePrivateKey, privateKeyToAccount } from "viem/accounts";
+import type { ServerAccount } from "../shared/types.js";
 
-type Account = {
-  label: string;
-  address: `0x${string}`;
-  privateKey: `0x${string}`;
-  balances: Record<string, bigint>;
-};
+// Use the shared ServerAccount type for consistency
+type Account = ServerAccount;
 
 const LABELS = ["Alice", "Bob", "Merchant", "Sponsor"] as const;
 

@@ -10,12 +10,14 @@ import {
 } from "viem";
 import { tempoModerato } from "viem/chains";
 import { tempoActions, Abis, Addresses } from "viem/tempo";
+import { config } from "./config.js";
 
-const transport = http("https://rpc.moderato.tempo.xyz");
+const transport = http(config.chain.rpcUrl);
 
-// Public client extended with Tempo-specific actions (faucet, token, dex, etc.)
-// Note: `as any` on tempoActions due to viem extension type conflicts at compile time.
-// Runtime behavior is correct — verified in Phase 0.
+// NOTE: We use 'as any' here due to complex viem extension typing issues.
+// The runtime behavior is correct and has been verified. This is a known
+// limitation with viem's current TypeScript definitions for extensions.
+// TODO: Remove when viem improves extension typing in future versions.
 export const publicClient = createPublicClient({
   chain: tempoModerato,
   transport,
@@ -34,18 +36,13 @@ export const tip20Abi = Abis.tip20;
 export const tempoAddresses = Addresses;
 
 // Key contract addresses
-export const ALPHA_USD = "0x20c0000000000000000000000000000000000001" as const;
+export const ALPHA_USD = config.contracts.alphaUsd;
 export const PATH_USD = Addresses.pathUsd;
-export const BETA_USD = "0x20c0000000000000000000000000000000000002" as const;
+export const BETA_USD = config.contracts.betaUsd;
 export const TIP20_FACTORY = Addresses.tip20Factory;
 export const STABLECOIN_DEX = Addresses.stablecoinDex;
 
-export const CHAIN_CONFIG = {
-  chainId: 42431,
-  rpcUrl: "https://rpc.moderato.tempo.xyz",
-  chainName: "Tempo Moderato Testnet",
-  explorerUrl: "https://explore.moderato.tempo.xyz",
-} as const;
+export const CHAIN_CONFIG = config.chain;
 
 // TIP-20 uses 6 decimals (like USDC)
 export const TIP20_DECIMALS = 6;
