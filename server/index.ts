@@ -14,6 +14,7 @@ import { setupAction } from "./actions/setup.js";
 import { balanceAction } from "./actions/balance.js";
 import { sendAction } from "./actions/send.js";
 import { sendSponsoredAction } from "./actions/send-sponsored.js";
+import { batchAction } from "./actions/batch.js";
 
 const app = new Hono();
 
@@ -113,14 +114,8 @@ app.post("/api/send-sponsored", async (c) => {
 
 app.post("/api/batch", async (c) => {
   try {
-    await runAction("batch", async () => {
-      emitLog({
-        action: "batch",
-        type: "info",
-        label: "Batch action not yet implemented (Phase 6)",
-        data: {},
-      });
-    });
+    const body = await c.req.json();
+    await runAction("batch", () => batchAction(body));
     return c.json({ ok: true });
   } catch (err) {
     return c.json({ error: String(err) }, 500);
