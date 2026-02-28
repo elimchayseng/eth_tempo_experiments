@@ -229,12 +229,12 @@ app.post("/api/history", async (c) => {
 const server = serve({
   fetch: app.fetch,
   port: config.server.port,
-  hostname: config.server.host
+  // For Railway deployment, don't specify hostname - let it bind to all interfaces
 });
 injectWebSocket(server);
 
-console.log(`[tempo-explorer] Server running on http://${config.server.host}:${config.server.port}`);
-console.log(`[tempo-explorer] WebSocket on ws://${config.server.host}:${config.server.port}/ws`);
+console.log(`[tempo-explorer] Server running on port ${config.server.port}`);
+console.log(`[tempo-explorer] WebSocket available on /ws`);
 console.log(`[tempo-explorer] Environment: ${config.server.environment}`);
 console.log(`[tempo-explorer] Targeting ${CHAIN_CONFIG.chainName} (chain ${CHAIN_CONFIG.chainId})`);
 console.log(`[tempo-explorer] Max WebSocket connections: ${config.limits.maxWebSocketConnections}`);
