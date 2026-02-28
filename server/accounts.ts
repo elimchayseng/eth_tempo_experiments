@@ -30,6 +30,15 @@ class AccountStore {
     return this.accounts.get(label.toLowerCase());
   }
 
+  getByAddress(address: string): Account | undefined {
+    for (const account of this.accounts.values()) {
+      if (account.address.toLowerCase() === address.toLowerCase()) {
+        return account;
+      }
+    }
+    return undefined;
+  }
+
   getAll(): Account[] {
     return Array.from(this.accounts.values());
   }

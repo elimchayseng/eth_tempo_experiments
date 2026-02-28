@@ -23,7 +23,7 @@ export const annotations = {
       "The memo traveled ON-CHAIN as part of the transfer — not in a separate transaction or off-chain database. This is native to TIP-20.",
     ],
     fee: [
-      "Fee was paid in AlphaUSD (a stablecoin), not a native gas token. Tempo has NO native token. The Fee AMM converts between stablecoins if the validator wants a different one.",
+      "Fee was paid in AlphaUSD $$$ (a stablecoin), not a native gas token. Tempo has NO native token. The Fee AMM converts between stablecoins if the validator wants a different one.",
     ],
     lane: [
       "This tx landed in the PAYMENT LANE — reserved blockspace that can't be consumed by other activity. Even if the chain is congested from DeFi or NFT activity, this payment goes through.",

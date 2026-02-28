@@ -15,6 +15,7 @@ import { balanceAction } from "./actions/balance.js";
 import { sendAction } from "./actions/send.js";
 import { sendSponsoredAction } from "./actions/send-sponsored.js";
 import { batchAction } from "./actions/batch.js";
+import { historyAction } from "./actions/history.js";
 
 const app = new Hono();
 
@@ -125,14 +126,7 @@ app.post("/api/batch", async (c) => {
 app.post("/api/history", async (c) => {
   try {
     const body = await c.req.json();
-    await runAction("history", async () => {
-      emitLog({
-        action: "history",
-        type: "info",
-        label: "History action not yet implemented (Phase 7)",
-        data: body,
-      });
-    });
+    await runAction("history", () => historyAction(body));
     return c.json({ ok: true });
   } catch (err) {
     return c.json({ error: String(err) }, 500);
