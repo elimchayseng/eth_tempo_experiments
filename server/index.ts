@@ -1,6 +1,6 @@
 import { Hono } from "hono";
 import { cors } from "hono/cors";
-import { serveStatic } from "hono/node-server";
+import { serveStatic } from "@hono/node-server/serve-static";
 import { serve } from "@hono/node-server";
 import { createNodeWebSocket } from "@hono/node-ws";
 import {
@@ -43,8 +43,16 @@ app.get(
   }))
 );
 
-// Health check — also verifies testnet connectivity
-app.get("/api/health", async (c) => {
+// Simple health check for Railway deployment
+app.get("/api/health", (c) => {
+  return c.json({
+    status: "ok",
+    timestamp: new Date().toISOString(),
+  });
+});
+
+// Blockchain connectivity check — verifies testnet connectivity
+app.get("/api/health/blockchain", async (c) => {
   try {
     const chainId = await publicClient.getChainId();
     const blockNumber = await publicClient.getBlockNumber();
@@ -141,7 +149,7 @@ app.post("/api/history", async (c) => {
 // Start server
 // ---------------------------------------------------------------------------
 
-const port = 4000;
+const port = process.env.PORT || 4000;
 const server = serve({ fetch: app.fetch, port });
 injectWebSocket(server);
 
